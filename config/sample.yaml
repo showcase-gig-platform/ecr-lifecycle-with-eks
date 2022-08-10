@@ -1,0 +1,15 @@
+region: ap-northeast-1
+profile: my-profile
+ecr:
+  roleARN: arn:aws:iam::xxxxxxxxxxxx:role/for-ecr
+  repos:
+    - my-repos
+eks:
+  - roleARN: arn:aws:iam::xxxxxxxxxxxx:role/for-eks
+    clusterName: my-eks-cluster
+commonLifecycle:
+  type: sinceImagePushed # sinceImagePushed or imageCountMoreThan
+  number: 30
+ignoreRegex:
+  - latest
+  - stable
