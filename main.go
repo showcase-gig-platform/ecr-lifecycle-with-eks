@@ -53,6 +53,7 @@ type appConfig struct {
 
 func main() {
 	configFile := flag.String("config-file", "/config.yaml", "Location of config file.")
+	dryRun := flag.Bool("dry-run", false, "enable dry run (just log tags to be delete)")
 	klog.InitFlags(nil)
 	flag.Parse()
 
@@ -110,7 +111,6 @@ func main() {
 		klog.Exitf("failed to describe ecr repositories, %v", err)
 	}
 	for _, repo := range repos.Repositories {
-		klog.Info(*repo.RepositoryUri)
 		inUseTags := inUseImageTags(images, *repo.RepositoryUri)
 		images, err := ecrCli.DescribeImages(ctx, &ecr.DescribeImagesInput{RepositoryName: repo.RepositoryName})
 		if err != nil {
@@ -126,6 +126,11 @@ func main() {
 
 		deleteTags := decideDeleteTags(candidateTags, inUseTags, appCfg.IgnoreRegex)
 		if len(deleteTags) == 0 {
+			continue
+		}
+
+		if *dryRun {
+			klog.Infof("dry-run enabled, images to be deleted: Repo: %v, Tags: %v", *repo.RepositoryName, deleteTags)
 			continue
 		}
 
@@ -327,7 +332,6 @@ func deleteEcrImage(ctx context.Context, cli *ecr.Client, tags []string, name st
 		ImageIds:       images,
 		RepositoryName: aws.String(name),
 	}
-	_ = input
-	// _, err := cli.BatchDeleteImage(ctx, input)
-	return nil
+	_, err := cli.BatchDeleteImage(ctx, input)
+	return err
 }
