@@ -1,4 +1,4 @@
-FROM golang:1.18 AS builder
+FROM public.ecr.aws/docker/library/golang:1.18 AS builder
 
 WORKDIR /workdir
 
@@ -15,5 +15,6 @@ FROM scratch
 
 WORKDIR /
 COPY --from=builder /workdir/ecr-lifecycle-with-eks .
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 
 ENTRYPOINT ["/ecr-lifecycle-with-eks"]
