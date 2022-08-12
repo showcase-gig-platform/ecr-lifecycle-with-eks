@@ -57,6 +57,8 @@ func main() {
 	klog.InitFlags(nil)
 	flag.Parse()
 
+	klog.Info("start ecr-lifecycle-with-eks")
+
 	// load and validate config
 	appCfg, err := readConfig(*configFile)
 	if err != nil {
@@ -69,6 +71,7 @@ func main() {
 		klog.Info("Override environment variable `AWS_PROFILE` with profile specified in config file.")
 		os.Setenv("AWS_PROFILE", appCfg.AwsProfile)
 	}
+	klog.Infof("config loaded: %#v", appCfg)
 	// end config
 
 	ctx := context.Background()
@@ -126,6 +129,7 @@ func main() {
 
 		deleteTags := decideDeleteTags(candidateTags, inUseTags, appCfg.IgnoreRegex)
 		if len(deleteTags) == 0 {
+			klog.Infof("images to delete is none. repository: %v", *repo.RepositoryName)
 			continue
 		}
 
