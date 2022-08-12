@@ -23,7 +23,7 @@
 
 ## config
 
-See also `config/sample.yaml`
+See also `samples/config.yaml`
 
 | Name                   | Required | Description                                                                                              |
 |------------------------|----------|----------------------------------------------------------------------------------------------------------|

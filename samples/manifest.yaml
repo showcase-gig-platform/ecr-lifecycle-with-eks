@@ -1,0 +1,46 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: ecr-lifecycle
+spec:
+  schedule: "0 3 * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: ecr-lifecycle
+              image: public.ecr.aws/q1m5p9s1/ecr-lifecycle-with-eks:latest
+              args:
+                - --config-file
+                - /config/config.yaml
+                # - --dry-run
+              volumeMounts:
+                - mountPath: /config
+                  name: config
+          volumes:
+            - name: config
+              configMap:
+                name: ecr-lifecycle
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ecr-lifecycle
+data:
+  config.yaml: |
+    region: ap-northeast-1
+    profile: my-profile
+    ecr:
+      roleARN: arn:aws:iam::xxxxxxxxxxxx:role/for-ecr
+      repos:
+        - my-repos
+    eks:
+      - roleARN: arn:aws:iam::xxxxxxxxxxxx:role/for-eks
+        clusterName: my-eks-cluster
+    commonLifecycle:
+      type: sinceImagePushed # sinceImagePushed or imageCountMoreThan
+      number: 30
+    ignoreRegex:
+      - latest
+      - stable
