@@ -127,14 +127,21 @@ func main() {
 			candidateTags = deletionCandidateTagsByImageCountMoreThan(images.ImageDetails, appCfg.Lifecycle.Number)
 		}
 
+		if len(candidateTags) == 0 {
+			klog.Infof("No candidate images to delete. repository: %v", *repo.RepositoryName)
+			continue
+		} else {
+			klog.Infof("Repository: %v. Candidate tags: %v. In use tags: %v", *repo.RepositoryName, candidateTags, inUseTags)
+		}
+
 		deleteTags := decideDeleteTags(candidateTags, inUseTags, appCfg.IgnoreRegex)
 		if len(deleteTags) == 0 {
-			klog.Infof("images to delete is none. repository: %v", *repo.RepositoryName)
+			klog.Infof("No images to delete. repository: %v", *repo.RepositoryName)
 			continue
 		}
 
 		if *dryRun {
-			klog.Infof("dry-run enabled, images to be deleted: Repo: %v, Tags: %v", *repo.RepositoryName, deleteTags)
+			klog.Infof("dry-run enabled, images to be deleted -> Repo: %v, Tags: %v", *repo.RepositoryName, deleteTags)
 			continue
 		}
 
