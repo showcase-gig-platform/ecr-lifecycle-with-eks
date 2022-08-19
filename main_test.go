@@ -3,30 +3,10 @@ package main
 import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ecr/types"
-	v1 "k8s.io/api/core/v1"
 	"reflect"
 	"testing"
 	"time"
 )
-
-func pods(images []string) []v1.Pod {
-	var result []v1.Pod
-	for _, image := range images {
-		result = append(
-			result,
-			v1.Pod{
-				Spec: v1.PodSpec{
-					Containers: []v1.Container{
-						{
-							Image: image,
-						},
-					},
-				},
-			},
-		)
-	}
-	return result
-}
 
 type ecrImage struct {
 	pushedAt time.Time
@@ -49,7 +29,7 @@ func ecrImages(images []ecrImage) []types.ImageDetail {
 
 func Test_listUniqueImages(t *testing.T) {
 	type args struct {
-		pods []v1.Pod
+		images []string
 	}
 	tests := []struct {
 		name string
@@ -59,14 +39,14 @@ func Test_listUniqueImages(t *testing.T) {
 		{
 			"unique choice",
 			args{
-				pods([]string{
+				[]string{
 					"targetuser/targetrepo:v1.0.0",
 					"targetuser/targetrepo:v1.0.1",
 					"targetuser/targetrepo:v1.0.0",
 					"targetuser/foorepo:v1.0.0",
 					"targetuser/targetrepo:v1.0.0",
 					"hogeuser/barrepo:v1.0.0",
-				}),
+				},
 			},
 			[]string{
 				"targetuser/targetrepo:v1.0.0",
@@ -78,7 +58,7 @@ func Test_listUniqueImages(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := listUniqueImages(tt.args.pods); !reflect.DeepEqual(got, tt.want) {
+			if got := listUniqueImages(tt.args.images); !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("listUniqueImages() = %v, want %v", got, tt.want)
 			}
 		})

@@ -12,7 +12,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"gopkg.in/yaml.v3"
 	"io/ioutil"
-	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -81,21 +80,21 @@ func main() {
 	}
 
 	// list container image in use from kubernetes clusters
-	var pods []v1.Pod
+	var inUseImages []string
 	for _, cluster := range appCfg.RefClusters {
 		c, err := kubeClient(ctx, baCfg, appCfg.DefaultRegion, cluster)
 		if err != nil {
 			klog.Errorf("failed to get kubernetes client, %v", err)
 			continue
 		}
-		pl, err := c.CoreV1().Pods("").List(ctx, metav1.ListOptions{})
+		images, err := listInUseImages(ctx, c)
 		if err != nil {
 			klog.Errorf("failed to list pods, %v", err)
 			continue
 		}
-		pods = append(pods, pl.Items...)
+		inUseImages = append(inUseImages, images...)
 	}
-	images := listUniqueImages(pods)
+	uniqueImages := listUniqueImages(inUseImages)
 	// end list container images
 
 	ecrRegion := appCfg.DefaultRegion
@@ -114,7 +113,7 @@ func main() {
 		klog.Exitf("failed to describe ecr repositories, %v", err)
 	}
 	for _, repo := range repos.Repositories {
-		inUseTags := inUseImageTags(images, *repo.RepositoryUri)
+		inUseTags := inUseImageTags(uniqueImages, *repo.RepositoryUri)
 		images, err := ecrCli.DescribeImages(ctx, &ecr.DescribeImagesInput{RepositoryName: repo.RepositoryName})
 		if err != nil {
 			klog.Errorf("failed to describe-images in ecr repository, %v", err)
@@ -239,20 +238,78 @@ func kubeClient(ctx context.Context, baseAwsConfig aws.Config, defaultRegion str
 	return client, nil
 }
 
-func listUniqueImages(pods []v1.Pod) []string {
-	var images []string
-	exists := map[string]bool{}
-	var containers []v1.Container
-	for _, pod := range pods {
-		containers = append(containers, pod.Spec.Containers...)
+func listInUseImages(ctx context.Context, client *kubernetes.Clientset) ([]string, error) {
+	var result []string
+
+	// deployment
+	dml, err := client.AppsV1().Deployments("").List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, err
 	}
-	for _, container := range containers {
-		if !exists[container.Image] {
-			exists[container.Image] = true
-			images = append(images, container.Image)
+	for _, dm := range dml.Items {
+		for _, container := range dm.Spec.Template.Spec.InitContainers {
+			result = append(result, container.Image)
+		}
+		for _, container := range dm.Spec.Template.Spec.Containers {
+			result = append(result, container.Image)
 		}
 	}
-	return images
+
+	// daemonset
+	dsl, err := client.AppsV1().DaemonSets("").List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+	for _, ds := range dsl.Items {
+		for _, container := range ds.Spec.Template.Spec.InitContainers {
+			result = append(result, container.Image)
+		}
+		for _, container := range ds.Spec.Template.Spec.Containers {
+			result = append(result, container.Image)
+		}
+	}
+
+	// statefulset
+	ssl, err := client.AppsV1().StatefulSets("").List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+	for _, ss := range ssl.Items {
+		for _, container := range ss.Spec.Template.Spec.InitContainers {
+			result = append(result, container.Image)
+		}
+		for _, container := range ss.Spec.Template.Spec.Containers {
+			result = append(result, container.Image)
+		}
+	}
+
+	// cronjob
+	cjl, err := client.BatchV1().CronJobs("").List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+	for _, cj := range cjl.Items {
+		for _, container := range cj.Spec.JobTemplate.Spec.Template.Spec.InitContainers {
+			result = append(result, container.Image)
+		}
+		for _, container := range cj.Spec.JobTemplate.Spec.Template.Spec.Containers {
+			result = append(result, container.Image)
+		}
+	}
+
+	return result, err
+}
+
+func listUniqueImages(images []string) []string {
+	var result []string
+	exists := map[string]bool{}
+	for _, image := range images {
+		if !exists[image] {
+			exists[image] = true
+			result = append(result, image)
+		}
+	}
+	return result
 }
 
 func inUseImageTags(images []string, repoUri string) []string {
