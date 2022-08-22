@@ -11,6 +11,7 @@ import (
 type ecrImage struct {
 	pushedAt time.Time
 	tags     []string
+	digest   string
 }
 
 func ecrImages(images []ecrImage) []types.ImageDetail {
@@ -21,6 +22,7 @@ func ecrImages(images []ecrImage) []types.ImageDetail {
 			types.ImageDetail{
 				ImagePushedAt: aws.Time(image.pushedAt),
 				ImageTags:     image.tags,
+				ImageDigest:   aws.String(image.digest),
 			},
 		)
 	}
@@ -101,7 +103,7 @@ func Test_inUseImageTags(t *testing.T) {
 	}
 }
 
-func Test_deletionCandidateTagsBySinceImagePushed(t *testing.T) {
+func Test_deletionCandidateImagesBySinceImagePushed(t *testing.T) {
 	type args struct {
 		images []types.ImageDetail
 		days   int
@@ -109,7 +111,7 @@ func Test_deletionCandidateTagsBySinceImagePushed(t *testing.T) {
 	tests := []struct {
 		name string
 		args args
-		want []string
+		want deletionImage
 	}{
 		{
 			"get candidates by since image pushed",
@@ -120,38 +122,114 @@ func Test_deletionCandidateTagsBySinceImagePushed(t *testing.T) {
 						[]string{
 							"11days",
 						},
+						"dummydigest",
 					},
 					{
 						time.Now().Add(-9*24*time.Hour + -1*time.Hour),
 						[]string{
 							"9days",
 						},
+						"dummydigest",
 					},
 					{
 						time.Now().Add(-10*24*time.Hour + -1*time.Hour),
 						[]string{
 							"10days",
 						},
+						"dummydigest",
 					},
 				}),
 				10,
 			},
-			[]string{
-				"11days",
-				"10days",
+			deletionImage{
+				[]string{
+					"11days",
+					"10days",
+				},
+				nil,
+			},
+		},
+		{
+			"with no tag",
+			args{
+				ecrImages([]ecrImage{
+					{
+						time.Now().Add(-11*24*time.Hour + -1*time.Hour),
+						[]string{},
+						"11daysdigest",
+					},
+					{
+						time.Now().Add(-9*24*time.Hour + -1*time.Hour),
+						[]string{},
+						"9daysdigest",
+					},
+					{
+						time.Now().Add(-10*24*time.Hour + -1*time.Hour),
+						[]string{},
+						"10daysdigest",
+					},
+				}),
+				10,
+			},
+			deletionImage{
+				nil,
+				[]string{
+					"11daysdigest",
+					"10daysdigest",
+				},
+			},
+		},
+		{
+			"tag and digest",
+			args{
+				ecrImages([]ecrImage{
+					{
+						time.Now().Add(-9*24*time.Hour + -1*time.Hour),
+						[]string{
+							"9days",
+						},
+						"dummydigest",
+					},
+					{
+						time.Now().Add(-10*24*time.Hour + -1*time.Hour),
+						[]string{
+							"10days",
+						},
+						"dummydigest",
+					},
+					{
+						time.Now().Add(-9*24*time.Hour + -1*time.Hour),
+						[]string{},
+						"9daysdigest",
+					},
+					{
+						time.Now().Add(-10*24*time.Hour + -1*time.Hour),
+						[]string{},
+						"10daysdigest",
+					},
+				}),
+				10,
+			},
+			deletionImage{
+				[]string{
+					"10days",
+				},
+				[]string{
+					"10daysdigest",
+				},
 			},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := deletionCandidateTagsBySinceImagePushed(tt.args.images, tt.args.days); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("deletionCandidateTagsBySinceImagePushed() = %v, want %v", got, tt.want)
+			if got := deletionCandidateImagesBySinceImagePushed(tt.args.images, tt.args.days); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("deletionCandidateImagesBySinceImagePushed() = %v, want %v", got, tt.want)
 			}
 		})
 	}
 }
 
-func Test_deletionCandidateTagsByImageCountMoreThan(t *testing.T) {
+func Test_deletionCandidateImagesByImageCountMoreThan(t *testing.T) {
 	type args struct {
 		images []types.ImageDetail
 		limit  int
@@ -159,7 +237,7 @@ func Test_deletionCandidateTagsByImageCountMoreThan(t *testing.T) {
 	tests := []struct {
 		name string
 		args args
-		want []string
+		want deletionImage
 	}{
 		{
 			"get candidates by image count",
@@ -170,31 +248,106 @@ func Test_deletionCandidateTagsByImageCountMoreThan(t *testing.T) {
 						[]string{
 							"1day",
 						},
+						"dummydigest",
 					},
 					{
 						time.Now().Add(-3*24*time.Hour + -1*time.Hour),
 						[]string{
 							"3days",
 						},
+						"dummydigest",
 					},
 					{
 						time.Now().Add(-2*24*time.Hour + -1*time.Hour),
 						[]string{
 							"2days",
 						},
+						"dummydigest",
 					},
 				}),
 				2,
 			},
-			[]string{
-				"3days",
+			deletionImage{
+				[]string{
+					"3days",
+				},
+				nil,
+			},
+		},
+		{
+			"with no tag",
+			args{
+				ecrImages([]ecrImage{
+					{
+						time.Now().Add(-1*24*time.Hour + -1*time.Hour),
+						[]string{},
+						"1daydigest",
+					},
+					{
+						time.Now().Add(-3*24*time.Hour + -1*time.Hour),
+						[]string{},
+						"3daysdigest",
+					},
+					{
+						time.Now().Add(-2*24*time.Hour + -1*time.Hour),
+						[]string{},
+						"2daysdigest",
+					},
+				}),
+				2,
+			},
+			deletionImage{
+				nil,
+				[]string{
+					"3daysdigest",
+				},
+			},
+		},
+		{
+			"tag and digest",
+			args{
+				ecrImages([]ecrImage{
+					{
+						time.Now().Add(-3*24*time.Hour + -1*time.Hour),
+						[]string{
+							"3days",
+						},
+						"dummydigest",
+					},
+					{
+						time.Now().Add(-2*24*time.Hour + -1*time.Hour),
+						[]string{
+							"2days",
+						},
+						"dummydigest",
+					},
+					{
+						time.Now().Add(-3*24*time.Hour + -1*time.Hour),
+						[]string{},
+						"3daysdigest",
+					},
+					{
+						time.Now().Add(-2*24*time.Hour + -1*time.Hour),
+						[]string{},
+						"2daysdigest",
+					},
+				}),
+				2,
+			},
+			deletionImage{
+				[]string{
+					"3days",
+				},
+				[]string{
+					"3daysdigest",
+				},
 			},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := deletionCandidateTagsByImageCountMoreThan(tt.args.images, tt.args.limit); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("deletionCandidateTagsByImageCountMoreThan() = %v, want %v", got, tt.want)
+			if got := deletionCandidateImagesByImageCountMoreThan(tt.args.images, tt.args.limit); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("deletionCandidateImagesByImageCountMoreThan() = %v, want %v", got, tt.want)
 			}
 		})
 	}

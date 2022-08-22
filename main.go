@@ -50,6 +50,11 @@ type appConfig struct {
 	IgnoreRegex   []string     `yaml:"ignoreRegex,omitempty"`
 }
 
+type deletionImage struct {
+	Tags    []string
+	Digests []string
+}
+
 func main() {
 	configFile := flag.String("config-file", "/config.yaml", "Location of config file.")
 	dryRun := flag.Bool("dry-run", false, "enable dry run (just log tags to be delete)")
@@ -119,32 +124,36 @@ func main() {
 			klog.Errorf("failed to describe-images in ecr repository, %v", err)
 			continue
 		}
-		var candidateTags []string
+		var candidateImage deletionImage
 		if appCfg.Lifecycle.CountType == "sinceImagePushed" {
-			candidateTags = deletionCandidateTagsBySinceImagePushed(images.ImageDetails, appCfg.Lifecycle.Number)
+			candidateImage = deletionCandidateImagesBySinceImagePushed(images.ImageDetails, appCfg.Lifecycle.Number)
 		} else {
-			candidateTags = deletionCandidateTagsByImageCountMoreThan(images.ImageDetails, appCfg.Lifecycle.Number)
+			candidateImage = deletionCandidateImagesByImageCountMoreThan(images.ImageDetails, appCfg.Lifecycle.Number)
 		}
 
-		if len(candidateTags) == 0 {
+		if len(candidateImage.Tags) == 0 && len(candidateImage.Digests) == 0 {
 			klog.Infof("No candidate images to delete. repository: %v", *repo.RepositoryName)
 			continue
 		} else {
-			klog.Infof("Repository: %v. Candidate tags: %v. In use tags: %v", *repo.RepositoryName, candidateTags, inUseTags)
+			klog.Infof("Repository: %v. Candidate images: %v. In use tags: %v", *repo.RepositoryName, candidateImage, inUseTags)
 		}
 
-		deleteTags := decideDeleteTags(candidateTags, inUseTags, appCfg.IgnoreRegex)
-		if len(deleteTags) == 0 {
+		deleteTags := decideDeleteTags(candidateImage.Tags, inUseTags, appCfg.IgnoreRegex)
+		if len(deleteTags) == 0 && len(candidateImage.Digests) == 0 {
 			klog.Infof("No images to delete. repository: %v", *repo.RepositoryName)
 			continue
 		}
 
+		deleteImage := deletionImage{
+			deleteTags,
+			candidateImage.Digests,
+		}
 		if *dryRun {
-			klog.Infof("dry-run enabled, images to be deleted -> Repo: %v, Tags: %v", *repo.RepositoryName, deleteTags)
+			klog.Infof("dry-run enabled, images to be deleted -> Repo: %v, Images: %v", *repo.RepositoryName, deleteImage)
 			continue
 		}
 
-		err = deleteEcrImage(ctx, ecrCli, deleteTags, *repo.RepositoryName)
+		err = deleteEcrImage(ctx, ecrCli, deleteImage, *repo.RepositoryName)
 		if err != nil {
 			klog.Errorf("failed to delete ecr images, %v", err)
 		}
@@ -327,32 +336,42 @@ func inUseImageTags(images []string, repoUri string) []string {
 	return result
 }
 
-func deletionCandidateTagsBySinceImagePushed(images []types.ImageDetail, days int) []string {
-	var result []string
+func deletionCandidateImagesBySinceImagePushed(images []types.ImageDetail, days int) deletionImage {
+	var tags []string
+	var digests []string
 	deadline := time.Now().Add(-time.Duration(days) * time.Hour * 24)
 	for _, image := range images {
 		if image.ImagePushedAt.Before(deadline) {
-			for _, tag := range image.ImageTags {
-				result = append(result, tag)
+			if len(image.ImageTags) == 0 {
+				digests = append(digests, *image.ImageDigest)
+			} else {
+				for _, tag := range image.ImageTags {
+					tags = append(tags, tag)
+				}
 			}
 		}
 	}
-	return result
+	return deletionImage{tags, digests}
 }
 
-func deletionCandidateTagsByImageCountMoreThan(images []types.ImageDetail, limit int) []string {
-	var result []string
+func deletionCandidateImagesByImageCountMoreThan(images []types.ImageDetail, limit int) deletionImage {
+	var tags []string
+	var digests []string
 	if len(images) <= limit {
-		return result
+		return deletionImage{tags, digests}
 	}
 	sort.Slice(images, func(i, j int) bool { return images[i].ImagePushedAt.After(*images[j].ImagePushedAt) })
 	candidates := images[limit:]
 	for _, candidate := range candidates {
-		for _, tag := range candidate.ImageTags {
-			result = append(result, tag)
+		if len(candidate.ImageTags) == 0 {
+			digests = append(digests, *candidate.ImageDigest)
+		} else {
+			for _, tag := range candidate.ImageTags {
+				tags = append(tags, tag)
+			}
 		}
 	}
-	return result
+	return deletionImage{tags, digests}
 }
 
 func decideDeleteTags(candidates, inUses, ignoreRegexes []string) []string {
@@ -387,17 +406,17 @@ func decideDeleteTags(candidates, inUses, ignoreRegexes []string) []string {
 	return result
 }
 
-func deleteEcrImage(ctx context.Context, cli *ecr.Client, tags []string, name string) error {
-	klog.Infof("delete images. Repo: %v, Tags: %v", name, tags)
-	var images []types.ImageIdentifier
-	for _, tag := range tags {
-		t := types.ImageIdentifier{
-			ImageTag: aws.String(tag),
-		}
-		images = append(images, t)
+func deleteEcrImage(ctx context.Context, cli *ecr.Client, images deletionImage, name string) error {
+	klog.Infof("delete images. Repo: %v, Images: %v", name, images)
+	var imageIds []types.ImageIdentifier
+	for _, tag := range images.Tags {
+		imageIds = append(imageIds, types.ImageIdentifier{ImageTag: aws.String(tag)})
+	}
+	for _, digest := range images.Digests {
+		imageIds = append(imageIds, types.ImageIdentifier{ImageDigest: aws.String(digest)})
 	}
 	input := &ecr.BatchDeleteImageInput{
-		ImageIds:       images,
+		ImageIds:       imageIds,
 		RepositoryName: aws.String(name),
 	}
 	_, err := cli.BatchDeleteImage(ctx, input)
