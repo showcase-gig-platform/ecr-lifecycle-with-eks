@@ -11,7 +11,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/eks"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"gopkg.in/yaml.v3"
-	"io/ioutil"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -31,9 +30,10 @@ type refCluster struct {
 }
 
 type targetEcr struct {
-	Region  string   `yaml:"region"`
-	RoleArn string   `yaml:"roleARN"`
-	Repos   []string `yaml:"repos"`
+	Region   string   `yaml:"region"`
+	RoleArn  string   `yaml:"roleARN"`
+	AllRepos bool     `yaml:"allRepos"`
+	Repos    []string `yaml:"repos"`
 }
 
 type lifecycle struct {
@@ -111,9 +111,11 @@ func main() {
 		klog.Exitf("failed to assume role, %v", err)
 	}
 	ecrCli := ecr.NewFromConfig(aaCfg)
-	repos, err := ecrCli.DescribeRepositories(ctx, &ecr.DescribeRepositoriesInput{
-		RepositoryNames: appCfg.TargetEcr.Repos,
-	})
+	input := &ecr.DescribeRepositoriesInput{}
+	if !appCfg.TargetEcr.AllRepos {
+		input.RepositoryNames = appCfg.TargetEcr.Repos
+	}
+	repos, err := ecrCli.DescribeRepositories(ctx, input)
 	if err != nil {
 		klog.Exitf("failed to describe ecr repositories, %v", err)
 	}
@@ -162,7 +164,7 @@ func main() {
 
 func readConfig(location string) (appConfig, error) {
 	var cnf appConfig
-	buf, err := ioutil.ReadFile(location)
+	buf, err := os.ReadFile(location)
 	if err != nil {
 		return cnf, err
 	}
@@ -179,8 +181,8 @@ func validateConfig(cfg appConfig) (bool, string) {
 	if !(cfg.Lifecycle.CountType == "sinceImagePushed" || cfg.Lifecycle.CountType == "imageCountMoreThan") {
 		return false, "`commonLifecycle.type` must be `sinceImagePushed` or `imageCountMoreThan`."
 	}
-	if len(cfg.TargetEcr.Repos) == 0 {
-		return false, "at least one `ecr.repos` must be specified."
+	if len(cfg.TargetEcr.Repos) == 0 && !cfg.TargetEcr.AllRepos {
+		return false, "if `ecr.allRepos` is false, at least one `ecr.repos` must be specified."
 	}
 	return true, ""
 }

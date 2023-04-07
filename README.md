@@ -30,7 +30,8 @@ See also `samples/config.yaml`
 | region                 | true     | AWS default region in all processes.                                                                     |
 | profile                | false    | AWS profile if you need to specify.                                                                      |
 | ecr.roleARN            | true     | AWS Role ARN to operate ecr resources.                                                                   |
-| ecr.repos              | true     | Target ECR repositories.                                                                                 |
+| ecr.allRepos           | false    | If set true, target is all ECR repositories. (within role's permissions and regions)                     |
+| ecr.repos              | false    | Target ECR repositories. (either repos or allRepos is required)                                          |
 | eks.roleARN            | true     | AWS Role ARN to access eks resource and cluster.                                                         |
 | eks.clusterName        | true     | EKS cluster name using images you want to exclude from deletion.                                         |
 | commonLifecycle.type   | true     | Base lifecycle. (`sinceImagePushed` or `imageCountMoreThan`)                                             |

@@ -2,6 +2,7 @@ region: ap-northeast-1
 profile: my-profile
 ecr:
   roleARN: arn:aws:iam::xxxxxxxxxxxx:role/for-ecr
+  allRepos: false
   repos:
     - my-repos
 eks:
