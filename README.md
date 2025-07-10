@@ -1,12 +1,20 @@
 # ecr-lifecycle-with-eks
 
-`ecr-lifecycle-with-eks` removes expired images in AWS ECR repositories, excluding images in use on your eks clusters.  
+`ecr-lifecycle-with-eks` removes expired images in AWS ECR repositories, excluding images in use on your eks clusters.
+
+## Security
+
+This project uses secure Docker practices:
+- Alpine Linux 3.19 base image for minimal attack surface
+- Non-root user execution for enhanced security
+- Latest Golang 1.23 for security updates
+- Explicit CA certificates for secure HTTPS communication  
 
 ## image
 
 ### official
 
-`public.ecr.aws/q1m5p9s1/ecr-lifecycle-with-eks` (amd64 linux only)
+`public.ecr.aws/q1m5p9s1/ecr-lifecycle-with-eks` (amd64 and arm64 linux)
 
 ### build
 
